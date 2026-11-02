@@ -31,7 +31,14 @@ and verify against the Red Hat container catalog that the target version is actu
 
 ## Scripts
 
-The whole workflow is automated by a script per component, run from this skill's directory
+Standalone entry point (also symlinked into `~/.local/bin`, so it works directly from any
+shell without loading this skill):
+
+```bash
+rhol-version-incrementer --component <operator|lfme|eventrouter> [target-version] [repo-path] [--dry-run] [--pr]
+```
+
+Under the hood it dispatches to a script per component, run from this skill's directory
 (`bash scripts/<name>.sh`):
 
 ```bash
