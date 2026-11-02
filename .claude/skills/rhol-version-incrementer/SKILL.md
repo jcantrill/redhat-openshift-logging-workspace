@@ -31,11 +31,12 @@ and verify against the Red Hat container catalog that the target version is actu
 
 ## Scripts
 
-Standalone entry point (also symlinked into `~/.local/bin`, so it works directly from any
-shell without loading this skill):
+Standalone entry point, usable directly from a shell without loading this skill (from the
+workspace root):
 
 ```bash
-rhol-version-incrementer --component <operator|lfme|eventrouter> [target-version] [repo-path] [--dry-run] [--pr]
+.claude/skills/rhol-version-incrementer/scripts/rhol-version-incrementer \
+  --component <operator|lfme|eventrouter> [target-version] [repo-path] [--dry-run] [--pr]
 ```
 
 Under the hood it dispatches to a script per component, run from this skill's directory
