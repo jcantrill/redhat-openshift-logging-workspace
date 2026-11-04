@@ -1,0 +1,138 @@
+---
+name: rhol-release-plan
+description: >
+  Use when the user asks to create, open, or plan a Red Hat OpenShift Logging (RHOL) z-stream
+  release ticket in Jira — e.g. "create the 6.6.3 release ticket", "set up the next z-stream
+  release", "plan release 6.2.15", or any request referencing the release template LOG-4933.
+  Creates the LOG release tracking issue (dates, fix version, due date, sprint, assignee) and the
+  ART release request issue (template ART-14539), linked to the LOG issue.
+---
+
+# RHOL Release Plan
+
+Create the LOG Jira release tracking issue for an OpenShift Logging z-stream release, based on the
+template **LOG-4933** ("[TEMPLATE] OpenShift Logging z-stream: 6.y.z"), plus the matching ART
+release request issue (template **ART-14539**).
+
+All Jira work goes through the **Atlassian MCP tools** (cloudId for redhat.atlassian.net:
+`2b9e35e3-6bd3-4cec-b838-f4249ee02432`). Do not use `acli` for descriptions or custom fields —
+see the `acli-jira-quirks` memory: MCP converts markdown to proper ADF and is the only reliable
+path for labels, fix versions, due dates, sprints, and assignee.
+
+## Inputs — ask the user before creating anything
+
+Ask (in one batch, via AskUserQuestion or a single question):
+
+1. **Release version** (e.g. `6.6.3`) — becomes the issue title and usually the fix version
+2. **Release Freeze date** (YYYY-MM-DD)
+3. **Candidate Build date** (YYYY-MM-DD)
+4. **Release Date** (YYYY-MM-DD)
+5. **Fix version** to set — defaults to `Logging <version>` (e.g. `Logging 6.2.14`); confirm
+   with the user if they want something different
+
+The sprint is derived, not asked: pick the sprint whose date range contains the Release Date.
+The assignee is always the requesting user.
+
+## Steps
+
+### 1. Create the issue (clone of LOG-4933)
+
+Fetch LOG-4933 with `getJiraIssue` (view: full) to get its current description, labels, priority,
+and issue type (Task). Then `createJiraIssue` in project LOG with:
+
+- **Summary:** `OpenShift Logging z-stream: <version>` (no `[TEMPLATE]` prefix)
+- **Type:** Task, **Priority:** same as template (Major)
+- **Labels:** copy the template's labels, **remove `template`** if present (expected set:
+  `groomed`, `no-errata`, `no-rn`, `z-stream`)
+- **Description:** the template description verbatim, with the three date placeholders in the
+  "Important Dates" table replaced:
+  - `Release Freeze Date` → user's freeze date
+  - `Candidate Build Ready Date` → user's candidate build date
+  - `Release Date` → user's release date
+
+Add a Cloners link to the template: `editJiraIssue` is unreliable for links — use `discover` to
+find the remote/link create operation, or note the lineage in the first comment if linking fails.
+
+### 2. Subtasks (only if any exist)
+
+If the created issue (or the clone source) has subtasks whose summaries start with `CLONE `,
+strip the `CLONE ` prefix from each summary via `editJiraIssue`. LOG-4933 normally has **no**
+subtasks — if there are none, skip this step silently; component subtasks are filed later per the
+description's instructions.
+
+### 3. Due date, fix version
+
+Via `editJiraIssue` on the new issue:
+
+- **Due date** = Release Date **+ 1 day**: `{"duedate": "YYYY-MM-DD"}`
+- **Fix versions**: `{"fixVersions": [{"name": "<fix version>"}]}` — the version name follows
+  the pattern `Logging <version>` (e.g. `Logging 6.2.14`)
+
+If the fix version does not exist in the LOG project, the edit fails — check with
+`getJiraProjectVersions` (executeRead); if missing, create it with `manageJiraProjectVersion`
+(executeWrite, action create), then retry. Do not invent a version name the user did not give.
+
+### 4. Sprint
+
+1. `listJiraBoards` (executeRead, projectKeyOrId: LOG) to get the LOG board id.
+2. `listJiraBoardSprints` (executeRead, boardId, state: all) and pick the sprint whose
+   start/end dates contain the Release Date. Sprint names follow the pattern
+   `Logging - Sprint 297` — use the name to sanity-check the pick.
+3. Add the issue: `manageJiraSprint` (executeDestructive, action `addIssues`,
+   sprintId, issueIdsOrKeys: [new issue key]).
+
+If no sprint covers the Release Date, tell the user and ask which sprint to use — do not guess.
+
+### 5. Assign to the user
+
+`editJiraIssue` with `additional_fields: {"assignee": {"accountId": "<user's accountId>"}}`.
+Get the accountId from `atlassianUserInfo` (the requesting user). Do **not** transition the issue
+to any other status.
+
+### 6. Create the ART release issue
+
+Template: **ART-14539** ("[template] Operator release request") — if the user says "ART-1453",
+that is an unrelated Bug; ART-21925's actual clone parent is ART-14539. See **ART-21925**
+("Release Logging 6.5.2 [2026-Aug-18]") as a filled-in example.
+
+**First check for a duplicate:** search the ART project for
+`summary ~ "Release Logging <version>"` — these issues are often filed ahead of time. If one
+exists, report it and skip creation.
+
+Create via `createJiraIssue` in project ART:
+
+- **Summary:** `Release Logging <version> [<release date>]` — date format `YYYY-Mmm-DD`, e.g.
+  `Release Logging 6.6.1 [2026-Sep-10]`
+- **Type:** Story; **Labels:** `art:release:schedule`
+- **Description:** the ART-14539 template description with:
+  - **GROUP** filled in: `logging-<major.minor>` (the ocp-build-data branch, e.g. `logging-6.5`)
+  - **ASSEMBLY** filled in: `<version>` (e.g. `6.5.2`)
+  - **Build Information** and **JIRA issues** sections left as template placeholders — they are
+    filled in later once builds and the shipping issue list are known
+- **Due date** = Release Date (matches ART-21925; ART needs 5 working days lead time)
+- **Reporter** = the user: pass the user's accountId (from `atlassianUserInfo`) as the `reporter`
+  on `createJiraIssue`. If the create call rejects the reporter field, retry without it and then
+  set it via `editJiraIssue` with `additional_fields: {"reporter": {"accountId": "..."}}`.
+
+Then link it to the LOG issue created above: a **Related** link, direction "is related to", from
+the ART issue to the LOG issue. Use `discover` to find the issue-link create operation
+(e.g. "link two jira issues").
+
+### 7. Report
+
+Give the user the new issue keys and URLs (LOG and ART), and a summary of what was set: titles,
+labels, dates, due dates, fix version, sprint name, assignee. List anything skipped or failed
+(e.g. missing fix version, no covering sprint, pre-existing ART issue) rather than silently
+omitting it.
+
+## Common Mistakes
+
+- Copying the `[TEMPLATE]` prefix or `YYYY-MM-DD` placeholders into the new issue
+- Leaving a `template` label on the release issue
+- Setting the due date to the Release Date instead of Release Date + 1
+- Using `acli` for the description (stores raw markdown as one ADF text node)
+- Assigning to a sprint that merely is "current" instead of the one containing the Release Date
+- Creating subtasks — this skill never creates them; they are filed per-request later
+- Filling in the ART issue's Build Information or JIRA issues sections at creation time
+- Cloning ART-1453 (an unrelated Bug) instead of the real template ART-14539
+- Creating a duplicate ART issue — always search for `Release Logging <version>` first
