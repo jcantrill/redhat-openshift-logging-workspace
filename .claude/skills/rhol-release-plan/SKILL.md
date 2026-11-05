@@ -118,6 +118,24 @@ Then link it to the LOG issue created above: a **Related** link, direction "is r
 the ART issue to the LOG issue. Use `discover` to find the issue-link create operation
 (e.g. "link two jira issues").
 
+### 6a. Fill the ART issue's JIRA issues list (later, near code freeze)
+
+When it's time to populate the ART issue's **JIRA issues** section, **run the
+`release-issue-auditor` skill** with the release version. It queries the Jira MCP server with:
+
+```text
+project = LOG AND fixVersion in ("Logging <X.Y.z>", "Logging <X.Y.Z>") AND status not in (New, "To Do", Assigned, Post, "Code Review", "In Progress") ORDER BY issuetype, key
+```
+
+and audits the z-stream checklist: QE-ready statuses (Modified for bugs, Review for tasks),
+`/hold` on open PRs of Code Review/Post issues, release notes or `no-rn`, private-issue handling,
+one issue per release for multi-release changes, and sprint assignment. **Issues that are not
+ready are resolved by asking the user** how to handle each one — never auto-fix or silently
+exclude.
+
+Take the surviving list from the audit and update the ART issue description's **JIRA issues**
+section via `editJiraIssue`, grouped `# CVEs` then `# Fixes` (see ART-21925 for the format).
+
 ### 7. Report
 
 Give the user the new issue keys and URLs (LOG and ART), and a summary of what was set: titles,
