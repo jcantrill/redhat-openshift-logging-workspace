@@ -133,8 +133,7 @@ one issue per release for multi-release changes, and sprint assignment. **Issues
 ready are resolved by asking the user** how to handle each one — never auto-fix or silently
 exclude.
 
-Take the surviving list from the audit and update the ART issue description's **JIRA issues**
-section via `editJiraIssue`, grouped `# CVEs` then `# Fixes` (see ART-21925 for the format).
+Take the surviving list from the audit — it feeds step 6c; do not edit the ART issue yet.
 
 ### 6b. Fill the ART issue's Build Information (later, at candidate selection)
 
@@ -168,9 +167,29 @@ Steps:
 6. You now have one eventrouter image and **eight FBC tags**. Prefix each FBC tag with the
    repository to form the full image name:
    `quay.io/redhat-user-workloads/ocp-art-tenant/art-fbc:<tag>`
-7. Write both into the ART issue's **Build Information** section via `editJiraIssue`: the eight
-   FBC pullspecs in the FBC block (grouped per operator, CLO then Loki, like ART-21925) and the
-   eventrouter NVR under extra images.
+   These feed step 6c; do not edit the ART issue yet.
+
+### 6c. Apply the update to the ART issue — summarize, confirm, then write
+
+Before touching the ART issue, present a **summary of everything that will be written** and ask
+the user to confirm (AskUserQuestion). For a finished example of the end state, see
+**ART-21925**. The summary must include, with **links to inspect each referenced component**:
+
+- **JIRA issues list** (from 6a): the issue keys grouped `# CVEs` / `# Fixes`, plus a clickable
+  Jira bulk-query link (`https://redhat.atlassian.net/issues/?jql=key in (...)`)
+- **Eventrouter image** (from 6b): the NVR, plus a link to the Konflux release it came from
+  (its Release Artifacts page)
+- **FBC images** (from 6b): the eight pullspecs grouped per operator (CLO then Loki), plus links
+  to the Konflux application (`.../applications/fbc-logging-<X-Y>/components`) and to the
+  specific PipelineRuns the tags were taken from
+- Links to the component builds checked in 6b step 1
+  (`.../applications/logging-<X-Y>/components`)
+
+Only after the user confirms, update the ART issue description via `editJiraIssue` in a single
+edit: fill the **Build Information** section (FBC pullspecs block, then the eventrouter NVR under
+extra images) and the **JIRA issues** section (`# CVEs` then `# Fixes`), keeping the rest of the
+template description intact. If the user adjusts anything in the summary, incorporate their
+changes rather than re-deriving the values.
 
 ### 7. Report
 
@@ -187,8 +206,10 @@ omitting it.
 - Using `acli` for the description (stores raw markdown as one ADF text node)
 - Assigning to a sprint that merely is "current" instead of the one containing the Release Date
 - Creating subtasks — this skill never creates them; they are filed per-request later
-- Filling in the ART issue's Build Information or JIRA issues sections at creation time (6a/6b
+- Filling in the ART issue's Build Information or JIRA issues sections at creation time (6a/6b/6c
   happen later, near code freeze)
+- Writing to the ART issue without showing the user a summary with inspection links and getting
+  explicit confirmation first
 - Mixing FBC runs from different "groups of four" — each operator's four runs must come from the
   same latest successful group
 - Using a staging release that is older than the component builds it should contain
