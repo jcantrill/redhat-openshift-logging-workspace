@@ -137,42 +137,14 @@ Take the surviving list from the audit — it feeds step 6c; do not edit the ART
 
 ### 6b. Fill the ART issue's Build Information (later, at candidate selection)
 
-Identify the FBC builds and the eventrouter image to be used for the release. Component and FBC
-builds live in Konflux (dots in the stream become dashes in the application name). URL patterns
-(replace `X-Y`, e.g. `6-5`):
+Identify the eventrouter image NVR and the eight FBC tags (two operators × 4 OCP versions) for
+the release. **Read [references/konflux-builds.md](references/konflux-builds.md)** for the Konflux
+URLs, the step-by-step procedure, and the gotchas (no mixing FBC groups of four; staging releases
+must be newer than component builds; the Konflux UI needs auth — plain fetches return nothing).
 
-- Components: `https://konflux-ui.apps.kflux-ocp-p01.7ayg.p1.openshiftapps.com/ns/art-logging-tenant/applications/logging-<X-Y>/components`
-- FBC: `https://konflux-ui.apps.kflux-ocp-p01.7ayg.p1.openshiftapps.com/ns/art-logging-tenant/applications/fbc-logging-<X-Y>/components`
-
-Steps:
-
-1. **Check recent component builds** happened and were successful (PipelineRuns for the release,
-   e.g. `logging-6.6`).
-2. **Check recent staging releases** were successful and are **newer than the component builds**,
-   comparing each component's builds against the staging releases on the application's releases
-   page: `https://konflux-ui.apps.kflux-ocp-p01.7ayg.p1.openshiftapps.com/ns/art-logging-tenant/applications/logging-<X-Y>/releases`
-   (e.g. `logging-6-5`). This matters mostly for the **eventrouter** image — it is not part of the
-   operators and thus the FBCs, so it must be mentioned separately in the release. Filter the
-   releases by name to find the relevant ones, e.g.
-   `.../applications/logging-6-5/releases?name=event` for eventrouter releases.
-   The last staging release was probably triggered by a bundle build (CLO or LO), unless the last
-   change was to eventrouter.
-3. **Pick the eventrouter candidate:** the most recent eventrouter release (found via the
-   `?name=event` filter above). Open it and note the NVR for the eventrouter image from its
-   **Release Artifacts** page, e.g.
-   `ose-logging-eventrouter-container-6.5.2-202608131800.p2.ge2c2ae9.assembly.stream.el9`.
-4. **Check the FBC builds** for the release (e.g. `fbc-logging-6.6`). Releases usually target
-   4 OCP versions and consist of two operators, so there are **two groups of four runs** per
-   release. The operators build independently — the four FBC builds for one operator may be older
-   than the other operator's four. Identify the latest successful **group of four runs** for each
-   operator.
-5. In each PipelineRun, note the **FBC tag** from the "additional tags" list in the "apply-tags"
-   step, e.g.
-   `v4.19__operator_nvr__ose-cluster-logging-operator-container-6.5.2-202608132150.p2.g75664fd.assembly.stream.el9`.
-6. You now have one eventrouter image and **eight FBC tags**. Prefix each FBC tag with the
-   repository to form the full image name:
-   `quay.io/redhat-user-workloads/ocp-art-tenant/art-fbc:<tag>`
-   These feed step 6c; do not edit the ART issue yet.
+The result — one eventrouter NVR plus eight pullspecs prefixed with
+`quay.io/redhat-user-workloads/ocp-art-tenant/art-fbc:` — feeds step 6c; do not edit the ART
+issue yet.
 
 ### 6c. Apply the update to the ART issue — summarize, confirm, then write
 
@@ -180,15 +152,11 @@ Before touching the ART issue, present a **summary of everything that will be wr
 the user to confirm (AskUserQuestion). For a finished example of the end state, see
 **ART-21925**. The summary must include, with **links to inspect each referenced component**:
 
-- **JIRA issues list** (from 6a): the issue keys grouped `# CVEs` / `# Fixes`, plus a clickable
-  Jira bulk-query link (`https://redhat.atlassian.net/issues/?jql=key in (...)`)
+- **JIRA issues list** (from 6a): keys grouped `# CVEs` / `# Fixes`, plus a Jira bulk-query link
 - **Eventrouter image** (from 6b): the NVR, plus a link to the Konflux release it came from
-  (its Release Artifacts page)
 - **FBC images** (from 6b): the eight pullspecs grouped per operator (CLO then Loki), plus links
-  to the Konflux application (`.../applications/fbc-logging-<X-Y>/components`) and to the
-  specific PipelineRuns the tags were taken from
-- Links to the component builds checked in 6b step 1
-  (`.../applications/logging-<X-Y>/components`)
+  to the fbc-logging application and the specific PipelineRuns the tags came from
+- Links to the component builds checked in 6b
 
 Only after the user confirms, update the ART issue description via `editJiraIssue` in a single
 edit: fill the **Build Information** section (FBC pullspecs block, then the eventrouter NVR under
@@ -215,8 +183,6 @@ omitting it.
   happen later, near code freeze)
 - Writing to the ART issue without showing the user a summary with inspection links and getting
   explicit confirmation first
-- Mixing FBC runs from different "groups of four" — each operator's four runs must come from the
-  same latest successful group
-- Using a staging release that is older than the component builds it should contain
+- Konflux build-selection errors — see the gotchas in references/konflux-builds.md
 - Cloning ART-1453 (an unrelated Bug) instead of the real template ART-14539
 - Creating a duplicate ART issue — always search for `Release Logging <version>` first
