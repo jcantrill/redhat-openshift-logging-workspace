@@ -54,7 +54,8 @@ default config; Side B = same config with the six fields suppressed in
 `kubernetes_logs` (config patched live via CLF `managementState:
 Unmanaged` + configmap edit + pod restart; the same change is on CLO
 bench worktree branch `bench-rotation-fix-6.7`, commit `03fd487e5`).
-5-minute steady window per side, `oc adm top` every 30s. Rate capped at
+5-minute steady window per side, `oc adm top` every 30s (first two
+samples per pod discarded as restart transition). Rate capped at
 4k/s because Loki 1x.demo cannot sustain 20k/s against garage/gp3
 storage (ingester 500s — same distress mode as the original LOG-10388
 bench; sink backpressure stalls the pipeline and poisons CPU numbers).
@@ -62,8 +63,8 @@ bench; sink backpressure stalls the pipeline and poisons CPU numbers).
 | Metric (3 hot collector pods) | Default | Suppressed | Δ |
 |---|---|---|---|
 | CPU median (per pod) | 155m | 130m | **−16%** |
-| CPU sum (hot pods) | 598m | 497m | −17% |
-| Memory median (per pod) | 400Mi | 280Mi | **−30%** |
+| CPU sum (hot pods) | 597m | 498m | −17% |
+| Memory median (per pod) | 403Mi | 278Mi | **−31%** |
 | Output payload per event | 2222 B | 2175 B | −47 B (leaks closed) |
 
 Verification: `pod_ip`/`pod_owner` absent from Loki records; `hostname`
@@ -75,6 +76,35 @@ Consistent with the earlier node-labels-only experiment at 20k/s
 distress) — the effect is real and roughly additive across the field
 set. Caveats: single 5-minute window per side, rate limited to 4k/s by
 the Loki backend, pod placement differs slightly between sides.
+
+## Extension: suppressing `kubernetes.annotations`
+
+`kubernetes.annotations` is the single largest field in the payload
+(878 B, 40% of the default 2222 B record — mostly the OVN
+`pod-networks`/`network-status` annotation JSON, which is infrastructure
+noise rather than user content). `pod_annotations = ""` suppresses it at
+the source. Two additional arms were measured with the same method
+(4k/s, 5-minute windows, first two samples per pod dropped as restart
+transition):
+
+| Metric (3 hot collector pods) | Default | Fields only | Annotations only | Fields + annotations |
+|---|---|---|---|---|
+| CPU median (per pod) | 155m | 130m (−16%) | 139m (−10%) | **113m (−27%)** |
+| CPU sum (hot pods) | 597m | 498m | 526m | **433m (−28%)** |
+| Memory median (per pod) | 403Mi | 278Mi (−31%) | 275Mi (−32%) | **229Mi (−43%)** |
+| Output payload per event | 2222 B | 2175 B | 1317 B | **1243 B (−44%)** |
+
+The payload drop is dominated by annotations (−905 B of the −979 B
+total); the CPU/memory effect is roughly additive across the two
+changes. Verification on the combined arm: `annotations`, `pod_ip`,
+`pod_owner` all absent from Loki records; `hostname` still populated.
+
+**Caveat:** unlike the six FieldsSpec keys — which are deleted before
+output anyway — `.kubernetes.annotations` is part of the VIAQ datamodel,
+so suppressing it is a product decision, not pure hygiene. A middle
+ground worth considering: keep the field but drop known infrastructure
+annotation keys (`volumes.kubernetes.io/*`, `k8s.ovn.org/*`,
+`k8s.v1.cni.cncf.io/*`) in the normalize filter.
 
 ## Plan
 
