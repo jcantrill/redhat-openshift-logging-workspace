@@ -41,12 +41,17 @@ saves ~0.36 core of transform CPU — meaningful against the ~3-core
 effective cap from LOG-10183.
 
 Peak RSS: null ~171 MB, VRL ~197 MB, extract_pattern ~215 MB. The native
-side still shows ~+18 MB vs VRL; the per-event template-render theory
-was wrong (path mode removed rendering entirely with no RSS change).
-Most likely cause: the regex crate grows a lazy DFA cache per compiled
-regex at match time — 46 rules ≈ the observed delta. Mitigations if
-productionized: consolidate the ten attempt-5 keyword rules into one
-alternation, or set `RegexBuilder::dfa_size_limit` lower.
+side still shows ~+18 MB vs VRL. Two theories tested and falsified:
+per-event template rendering (path mode removed it with no RSS change)
+and lazy-DFA cache growth (a 256 KB `dfa_size_limit` cap left peak RSS
+unchanged at ~211 MB while *costing* CPU — 7.1 vs 5.6 µs/event, ratio
+2.6× → 2.0× — so the cap was reverted). The VRL side compiles its own
+grok-based regexes with the same cache defaults, so the delta likely
+lives in the per-regex NFA/one-pass programs or per-thread pool
+duplication, or is simply measurement noise. Remaining lever if the
+delta matters: reduce the rule count by merging rule groups into single
+alternation regexes (~46 → ~20), which shrinks every per-regex
+structure at once.
 
 ### Template mode (superseded, kept for reference)
 

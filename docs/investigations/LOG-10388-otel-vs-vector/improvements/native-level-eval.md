@@ -69,10 +69,16 @@ fatal/severe/emerg grok variants; `warning` collapsing to `warn`;
 `WARN(?:ING)?` matching bare WARN first).
 
 **Peak RSS:** null ~171 MB, VRL ~197 MB, extract_pattern ~215 MB. The
-~+18 MB native-vs-VRL delta persists in path mode, so it is not template
-rendering; most likely the regex crate's lazily-grown per-regex DFA
-caches (46 rules). Mitigations: merge the ten attempt-5 keyword rules
-into one alternation, or cap `dfa_size_limit`.
+~+18 MB native-vs-VRL delta is unresolved. Two theories tested and
+falsified: per-event template rendering (path mode removed it with no
+RSS change) and lazy-DFA cache growth (a 256 KB `dfa_size_limit` cap
+left peak RSS unchanged while costing CPU — 7.1 vs 5.6 µs/event, ratio
+2.6× → 2.0× — so the cap was reverted). The VRL side compiles its own
+grok-based regexes with the same cache defaults, so the delta likely
+lives in the per-regex NFA/one-pass programs, per-thread pool
+duplication, or measurement noise. Remaining lever: merge rule groups
+into single alternation regexes (~46 → ~20 rules), shrinking every
+per-regex structure at once.
 
 ## Known semantic difference
 
@@ -86,4 +92,5 @@ The 2× gate is cleared. Productionization carries ongoing cost: ~150
 lines of transform code rebased across every vector-rhel9 rebase and
 CVE-audited, plus tests and docs — versus the level policy staying in
 CLO config. Remaining optimization headroom: keyword-rule alternation
-merge, rule reordering by observed hit frequency, DFA size cap.
+merge (~46 → ~20 regexes, likely also the RSS lever), rule reordering
+by observed hit frequency.
