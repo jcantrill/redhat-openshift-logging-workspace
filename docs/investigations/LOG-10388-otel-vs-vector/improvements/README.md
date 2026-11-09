@@ -18,7 +18,7 @@ enumerates where that cost lives and what could be done about it.
 | Doc | Area | Status |
 |---|---|---|
 | [native-level-eval.md](native-level-eval.md) | Native Rust level evaluation | Benchmarked: 2.6× CPU win, gate cleared — decision needed ([LOG-10548](https://redhat.atlassian.net/browse/LOG-10548)) |
-| [kubernetes-fields-suppression.md](kubernetes-fields-suppression.md) | Suppress unused kubernetes_logs annotation fields | Approved, not yet implemented |
+| [kubernetes-fields-suppression.md](kubernetes-fields-suppression.md) | Suppress unused kubernetes_logs annotation fields | Validated on live cluster: −16% CPU, −30% mem; closes pod_ip/pod_owner output leak |
 | [label-dedotting.md](label-dedotting.md) | Dedot restructure + LOG-10546 fix | Approved, not yet implemented |
 | [del-move-hygiene.md](del-move-hygiene.md) | `del()` move-hygiene in the copy-out | Identified |
 | [internal-wrap-elimination.md](internal-wrap-elimination.md) | Eliminate the `_internal` wrap | Identified (larger redesign) |
