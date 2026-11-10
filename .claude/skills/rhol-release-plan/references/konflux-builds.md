@@ -18,8 +18,9 @@ All release artifacts live in the **`art-logging-tenant`** namespace.
   `logging-<X-Y>` (e.g. `logging-6-5`); FBC components are prefixed `fbc-logging-<X-Y>`
   (e.g. `fbc-logging-6-5`).
 - **Releases:** `oc get releases -n art-logging-tenant` — dev releases are prefixed
-  `logging-<X-Y>` (e.g. `logging-6-5`); FBC stage releases are prefixed
-  `openshift-logging-stage-<stream>-fbc` (e.g. `openshift-logging-stage-6-2-14-fbc`).
+  `logging-<X-Y>` (e.g. `logging-6-5`); FBC stage releases are named per operator, like
+  `fbc-ri-stage-logging-<X-Y>-cluster-logging-operator`
+  (e.g. `fbc-ri-stage-logging-6-0-cluster-logging-operator`).
 
 Inspect a single release's artifacts with `oc get release <name> -n art-logging-tenant -o yaml`
 (or `-o json`) — the artifact list carries the image tags/NVRs needed below. Use
