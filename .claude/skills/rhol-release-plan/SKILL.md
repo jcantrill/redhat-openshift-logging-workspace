@@ -166,6 +166,19 @@ extra images) and the **JIRA issues** section (`# CVEs` then `# Fixes`), keeping
 template description intact. If the user adjusts anything in the summary, incorporate their
 changes rather than re-deriving the values.
 
+### 6d. Start the FBC staging release pipeline (after 6c is applied)
+
+Start the ART `release-from-fbc` pipeline, which stages the release and creates a **shipment MR**
+in the `ocp-shipment-data` repository. **Read
+[references/fbc-release-pipeline.md](references/fbc-release-pipeline.md)** for the tkn CLI
+prerequisite, the parameter mapping (all values come from the ART issue; pullspecs and jira-bugs
+are sorted, comma-delimited), and the safety flags. A normal run has a real shipment-MR side
+effect — dry-run first and get user confirmation before the real run.
+
+After the run, check the **advisory YAML** in the shipment MR: its JIRA issue list and CVEs must
+match the ART issue exactly (sorted diff against the `jira-bugs` parameter); report mismatches to
+the user rather than editing the MR.
+
 ### 7. Report
 
 Give the user the new issue keys and URLs (LOG and ART), and a summary of what was set: titles,
@@ -186,5 +199,9 @@ omitting it.
 - Writing to the ART issue without showing the user a summary with inspection links and getting
   explicit confirmation first
 - Konflux build-selection errors — see the gotchas in references/konflux-builds.md
+- Starting `release-from-fbc` with floating tags instead of the exact tested pullspecs, or with
+  unsorted / space-separated lists — see references/fbc-release-pipeline.md
+- Running `release-from-fbc` for real (without `dry-run` or `test-mode`) without showing the user
+  the populated command first — it creates a real shipment MR
 - Cloning ART-1453 (an unrelated Bug) instead of the real template ART-14539
 - Creating a duplicate ART issue — always search for `Release Logging <version>` first
