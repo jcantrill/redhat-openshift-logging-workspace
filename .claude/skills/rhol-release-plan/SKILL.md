@@ -138,9 +138,11 @@ Take the surviving list from the audit — it feeds step 6c; do not edit the ART
 ### 6b. Fill the ART issue's Build Information (later, at candidate selection)
 
 Identify the eventrouter image NVR and the eight FBC tags (two operators × 4 OCP versions) for
-the release. **Read [references/konflux-builds.md](references/konflux-builds.md)** for the Konflux
-URLs, the step-by-step procedure, and the gotchas (no mixing FBC groups of four; staging releases
-must be newer than component builds; the Konflux UI needs auth — plain fetches return nothing).
+the release. **Read [references/konflux-builds.md](references/konflux-builds.md)** for the `oc`
+programmatic access (requires an authenticated session on the kflux cluster; ask the user to
+`oc login --web` if needed), the step-by-step procedure, and the gotchas (no mixing FBC groups of
+four; staging releases must be newer than component builds; the Konflux UI is a JS app — plain
+fetches return nothing).
 
 The result — one eventrouter NVR plus eight pullspecs prefixed with
 `quay.io/redhat-user-workloads/ocp-art-tenant/art-fbc:` — feeds step 6c; do not edit the ART
