@@ -51,10 +51,21 @@ Equivalent Konflux UI URLs (fallback or for handing the user a link; replace `X-
    4 OCP versions and consist of two operators, so there are **two groups of four runs** per
    release. The operators build independently — the four FBC builds for one operator may be older
    than the other operator's four. Identify the latest successful **group of four runs** for each
-   operator.
-5. In each PipelineRun, note the **FBC tag** from the "additional tags" list in the "apply-tags"
-   step, e.g.
-   `v4.19__operator_nvr__ose-cluster-logging-operator-container-6.5.2-202608132150.p2.g75664fd.assembly.stream.el9`.
+   operator. FBC component builds appear as snapshots named `fbc-logging-<X-Y>-<timestamp>-000`
+   (plus suffixed variants); each carries annotations `test.appstudio.openshift.io/result-image-url`
+   (e.g. `...art-fbc:cluster-logging-operator-fbc-6.5.4-20261109224212.ocp4.20`, which names the
+   operator, the assembly, and the OCP version) and a `build-pipelinerun` label naming the
+   component. List them chronologically:
+   `oc get snapshots -n art-logging-tenant --sort-by=.metadata.creationTimestamp`.
+5. **Derive the FBC tags.** The `v<ocp>__operator_nvr__<NVR>` tags are applied by the fbc builds'
+   "apply-tags" step, but PipelineRuns are aggressively pruned and the quay `art-fbc` tag list is
+   not readable with cluster credentials — so derive them instead: take the operator NVR from the
+   newest successful stage release's image list (step 2/3 method:
+   `oc get release <name> -o yaml` and grep the operator container NVR), then form one tag per
+   target OCP version (currently v4.19–v4.22), all sharing that NVR:
+   `v4.19__operator_nvr__ose-cluster-logging-operator-container-6.5.4-202611092006.p2.g8df5748.assembly.stream.el9`
+   (validated: the derived tags match the pattern of tags previously written by hand to ART
+   tickets). Present the tags to the user as pattern-derived, not registry-verified.
 6. You now have one eventrouter image and **eight FBC tags**. Prefix each FBC tag with the
    repository to form the full image name:
    `quay.io/redhat-user-workloads/ocp-art-tenant/art-fbc:<tag>`
@@ -64,5 +75,10 @@ Equivalent Konflux UI URLs (fallback or for handing the user a link; replace `X-
 - Never mix FBC runs from different "groups of four" — each operator's four runs must come from
   the same latest successful group.
 - Never use a staging release that is older than the component builds it should contain.
+- FBC PipelineRuns are pruned quickly (only a handful retained) — do not rely on reading their
+  apply-tags step; derive the tags as in step 5.
+- Newer fbc component builds may exist than the newest stage release for that operator; if so,
+  flag it in the 6c summary — they most likely re-pin the same operator NVR, but a newer operator
+  build would change the tags.
 - The Konflux UI is a JavaScript app: plain HTTP fetches return nothing. Use the `oc` programmatic
   access above, or ask the user to paste the tags/NVR from the UI.
