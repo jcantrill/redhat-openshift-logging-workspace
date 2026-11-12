@@ -1,0 +1,274 @@
+---
+name: rhol-release-close
+description: >
+  Use when the user asks to close, ship, or release a Red Hat OpenShift Logging (RHOL) z-stream
+  release in Jira after the ART shipment merge request has merged — e.g. "close out 6.5.4",
+  "close 6.5.4", "release Logging 6.5.4", "this shipment MR is merged, close the release".
+  Accepts either a gitlab.cee.redhat.com ocp-shipment-data merge request URL or a bare version
+  number (in which case it finds the shipment MR by its title). Derives the release version and
+  ship date from the MR, extracts the production errata (advisory) URL from the shipment image
+  YAML, and updates the "Logging X.Y.Z" Jira release: description, release date, and released
+  status. Optionally creates the next z-stream release version (e.g. Logging 6.5.5) with a
+  start date of the closed release's date + 1 day, and offers to bump the operator versions
+  (cluster-logging-operator and loki-operator, on their matching release-X.Y branches) via
+  the rhol-version-incrementer skill.
+---
+
+# RHOL Release Close
+
+Close out a RHOL z-stream release in Jira once its ART shipment MR has merged: put the errata
+URL on the release, set the release date, and mark the version released.
+
+## Role
+
+You are closing the Jira **project version** (release) named `Logging <X.Y.Z>` in project LOG.
+The version — not an issue — holds the description, release date, and released status.
+
+## Inputs
+
+The user gives either:
+
+- a **shipment MR URL** in the `ocp-shipment-data` repository, e.g.
+  `https://gitlab.cee.redhat.com/hybrid-platforms/art/ocp-shipment-data/-/merge_requests/1159`,
+  or
+- a **bare version number**, e.g. "close 6.5.4" — in which case run Step 0 to find the MR.
+
+If neither is given, ask — do not guess a version or construct an MR URL.
+
+## Step 0 — Find the MR from a version number (only when no MR URL was given)
+
+List the project's merge requests matching the shipment title pattern
+`Shipment for openshift-logging <version> (ship date: YYYY-Mmm-DD)`:
+
+```bash
+PROJECT="hybrid-platforms%2Fart%2Focp-shipment-data"
+VERSION="6.5.4"
+
+curl -s "https://gitlab.cee.redhat.com/api/v4/projects/$PROJECT/merge_requests?state=opened&search=openshift-logging%20$VERSION&per_page=20" | \
+python3 -c "import json,sys; [print(m['iid'], m['state'], '-', m['title']) for m in json.load(sys.stdin)]"
+```
+
+- The `search` parameter is a case-insensitive substring match on title (and description) —
+  always print the titles and **verify each matches the exact pattern**
+  `Shipment for openshift-logging <version> (ship date: ...)`; the search can also return
+  MRs for other products or nearby versions (e.g. `6.5.40` when searching `6.5.4`).
+- Search `state=opened` first. If nothing is open, repeat with `state=merged` (and then
+  `state=all`) — a release is normally closed after its MR merges, so the matching MR is
+  often already merged. Report which state you found it in.
+- If there is exactly one match, proceed with that MR (continue at Step 1, skipping the
+  re-fetch if you already have the full JSON).
+- If there are multiple matches, list them and ask the user which MR to use.
+- If there are no matches in any state, stop and tell the user — do not close a release
+  without a shipment MR.
+
+## Prerequisites
+
+- Network access to `gitlab.cee.redhat.com` (anonymous read works for this repo from the corp
+  network; if the API returns 401/403/404, tell the user rather than retrying)
+- Atlassian MCP tools; cloudId for redhat.atlassian.net:
+  `2b9e35e3-6bd3-4cec-b838-f4249ee02432`
+
+## Instructions
+
+### Step 1 — Fetch the MR
+
+Parse the URL as `https://gitlab.cee.redhat.com/<project-path>/-/merge_requests/<iid>`,
+URL-encode the project path, and fetch the MR metadata:
+
+```bash
+PROJECT="hybrid-platforms%2Fart%2Focp-shipment-data"
+MR_IID="1159"
+
+curl -s "https://gitlab.cee.redhat.com/api/v4/projects/$PROJECT/merge_requests/$MR_IID"
+```
+
+From the MR JSON extract:
+
+- **title** — e.g. `Shipment for openshift-logging 6.5.4 (ship date: 2026-Nov-12)`.
+  It yields the **version** (`6.5.4`) and the **ship date** (`YYYY-Mmm-DD`, e.g. `2026-Nov-12`).
+  Convert the ship date to ISO `YYYY-MM-DD` with Python — GNU `date -d` rejects the
+  `YYYY-Mmm-DD` form:
+
+  ```bash
+  echo "2026-Nov-12" | python3 -c "import sys,datetime; print(datetime.datetime.strptime(sys.stdin.read().strip(), '%Y-%b-%d').strftime('%Y-%F'))"
+  ```
+- **state** — normally `merged`. If it is `opened` (e.g. the user is closing the release while
+  the shipment MR is still open), warn them that the MR has not merged yet and get explicit
+  confirmation before proceeding; do not close the release early on your own judgment.
+
+### Step 2 — Extract the errata URL from the shipment files
+
+Fetch the MR diffs:
+
+```bash
+curl -s "https://gitlab.cee.redhat.com/api/v4/projects/$PROJECT/merge_requests/$MR_IID/diffs"
+```
+
+Each entry has `new_path` and `diff`. The MR touches two kinds of files:
+
+- `prod/<version>.fbc.<ocp-ver>.<timestamp>.yaml` — FBC catalog files; **ignore these**
+- `prod/<version>.image.<timestamp>.yaml` — the **image advisory file**; this is the one to read
+
+From the image file's diff, read `environments.prod.advisory.url`, e.g.
+`https://access.redhat.com/errata/RHSA-2026:99823`. This is the **errata URL**. Take it from
+the `prod` environment — **not** `stage` (which points at `access.stage.redhat.com`). The
+reliable discriminator when grepping: the prod URL host is exactly `access.redhat.com`, and
+note the advisory id contains a **colon** (`RHSA-2026:99823`) — don't write a regex that stops
+at the digits:
+
+```bash
+curl -s "https://gitlab.cee.redhat.com/api/v4/projects/$PROJECT/merge_requests/$MR_IID/diffs" | \
+python3 -c "
+import json,sys,re
+diffs=json.load(sys.stdin)
+imgs=[f for f in diffs if re.search(r'/prod/[^/]*\.image\.[0-9]+\.yaml$', f['new_path'])]
+assert len(imgs)==1, f'expected 1 image file, got {len(imgs)}'
+d=imgs[0]['diff']
+asm=re.search(r'assembly: (\S+)', d).group(1)
+url=re.search(r'url: (https://access\.redhat\.com/errata/RH[A-Z]+-[0-9]+:[0-9]+)', d).group(1)
+print('assembly:', asm); print('errata:', url)
+"
+```
+
+Sanity checks — stop and tell the user instead of proceeding if any fails:
+
+- The image file's `shipment.metadata.assembly` (e.g. `6.5.4`) matches the version from the MR
+  title
+- There is exactly one image file (if several, they must all carry the same prod advisory URL;
+  if they differ, report the conflict)
+- The URL matches `https://access.redhat.com/errata/RH[A-Z]+-`
+
+### Step 3 — Find the Jira release
+
+The Jira version name is `Logging <version>` (e.g. `Logging 6.5.4`). Look it up with
+`getJiraProjectVersions` (executeRead, projectIdOrKey `LOG`, query `Logging <version>`) and
+keep its `versionId`.
+
+If the version does not exist in the LOG project, stop and tell the user — do not create it
+(rhol-release-plan owns creation).
+
+If the version is already `released: true`, report that and ask the user before overwriting
+anything.
+
+### Step 4 — Summarize and confirm
+
+Present a summary and get the user's confirmation (AskUserQuestion) before writing:
+
+- The release version name and versionId
+- The errata URL that will become the description
+- The release date (ship date from the MR title, ISO format)
+- That the version will be marked released
+
+The established description convention is the **bare errata URL** — no label, no extra prose
+(see released versions like `Logging 6.5.3` or `Logging 6.5.2` for examples).
+
+### Step 5 — Update the release
+
+Apply all three changes in one `manageJiraProjectVersion` call (executeDestructive),
+action `update`:
+
+```json
+{
+  "cloudId": "2b9e35e3-6bd3-4cec-b838-f4249ee02432",
+  "action": "update",
+  "versionId": "<versionId>",
+  "description": "<errata URL>",
+  "releaseDate": "<YYYY-MM-DD>",
+  "released": true
+}
+```
+
+`released` must be a real boolean. Use action `update` (not `release`) so the description and
+release date land in the same call. Only pass `moveUnfixedIssuesTo` if the user explicitly asks
+to sweep unresolved issues into a later version — never decide that yourself.
+
+### Step 6 — Report
+
+Report what was written: version name, errata URL, release date, released status. Mention
+anything skipped or failed (unmerged MR, missing version, already released) rather than
+silently omitting it.
+
+### Step 7 — Offer to create the next z-stream release
+
+After a successful close, offer to create the next z-stream release version in the LOG
+project, e.g. closing `6.5.4` → create `Logging 6.5.5`. Do not create it unasked — ask the
+user first (AskUserQuestion), then:
+
+- **Version name:** `Logging <X.Y.(Z+1)>` — bump only the patch component of the version just
+  closed. If the user asks for a different version, use theirs.
+- **Start date:** the closed release's **release date + 1 day**, e.g.
+  `2026-11-12` → `2026-11-13`:
+
+  ```bash
+  echo "2026-11-12" | python3 -c "import sys,datetime; print((datetime.date.fromisoformat(sys.stdin.read().strip()) + datetime.timedelta(days=1)).isoformat())"
+  ```
+
+- **Release date:** leave unset — it is not known yet and comes from the next release's
+  planning (see the `rhol-release-plan` skill, which owns the full release ticket workflow;
+  this step only creates the Jira version).
+
+Before creating, check the version does not already exist:
+`getJiraProjectVersions` (executeRead, projectIdOrKey `LOG`, query `Logging <new version>`).
+If it exists, report it and skip creation.
+
+Create it with `manageJiraProjectVersion` (executeDestructive), action `create`:
+
+```json
+{
+  "cloudId": "2b9e35e3-6bd3-4cec-b838-f4249ee02432",
+  "action": "create",
+  "projectIdOrKey": "LOG",
+  "name": "Logging <X.Y.(Z+1)>",
+  "startDate": "<release date + 1 day>"
+}
+```
+
+Then report the new version name, its versionId, and its start date.
+
+### Step 8 — Offer to bump the operator versions for the new release
+
+After creating the next z-stream release (or when the user asks to "bump the versions" for
+it), offer to bump the **operators only** — cluster-logging-operator and loki-operator —
+using the **`rhol-version-incrementer`** skill. Do not bump unasked, and do not bump the
+other components (LFME, eventrouter) as part of release close.
+
+Both operators have a branch per z-stream: the bump for an `X.Y.Z` release runs against the
+matching `release-X.Y` branch of the operator's repo, and the PR targets that branch (never
+`main`):
+
+| Operator | Repository | Bump branch (for X.Y.Z) |
+|---|---|---|
+| cluster-logging-operator | `github.com/openshift/cluster-logging-operator` | `release-X.Y` (e.g. `release-6.5` for 6.5.5) |
+| loki-operator | Red Hat fork `github.com/openshift/loki` (**not** the workspace `loki/` clone, which tracks `grafana/loki`) | `release-X.Y` (e.g. `release-6.7`) |
+
+Notes:
+
+- The target version equals the new release's `<X.Y.Z>` for the cluster-logging-operator.
+  The loki-operator streams independently (e.g. `release-6.7` while CLO is on `release-6.5`)
+  — confirm which loki `release-X.Y` branch and target version the user intends instead of
+  assuming it matches the release.
+- Check out a worktree of the matching `release-X.Y` branch and pass it as the bump script's
+  repo-path; create the PR with `--base release-X.Y`.
+- Run each bump with `--dry-run` first, show the user the diff, and get confirmation before
+  any commit/push/PR (the incrementer skill's own confirmation flow).
+
+## Common Mistakes
+
+- Reading the advisory URL from the `stage` environment instead of `prod`
+- Taking the URL from an `.fbc.` file instead of the `.image.` file
+- Treating the release as a Jira issue — it is a project version; `editJiraIssue` and
+  `transitionJiraIssue` do not apply
+- Marking the version released before the MR has actually merged without warning the user
+  and getting confirmation
+- Trusting the GitLab `search` substring match blindly — `6.5.4` also matches `6.5.40`;
+  always re-verify the full title pattern
+- Writing to Jira without showing the user the summary first
+- Overwriting an already-released version without asking
+- Creating the next z-stream version unasked, or giving it a release date — only the start
+  date (closed release's date + 1 day) is known at close time
+- Bumping the minor instead of the patch when deriving the next version
+- Bumping LFME or eventrouter as part of release close — only the two operators are bumped
+- Running an operator bump against `main` instead of the matching `release-X.Y` branch
+- Running the loki-operator bump against the workspace `loki/` clone (it tracks grafana/loki)
+  or assuming the loki-operator stream matches the CLO release — confirm its branch and
+  target with the user
