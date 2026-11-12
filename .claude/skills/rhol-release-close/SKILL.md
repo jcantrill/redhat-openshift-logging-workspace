@@ -1,17 +1,13 @@
 ---
 name: rhol-release-close
 description: >
-  Use when the user asks to close, ship, or release a Red Hat OpenShift Logging (RHOL) z-stream
-  release in Jira after the ART shipment merge request has merged — e.g. "close out 6.5.4",
-  "close 6.5.4", "release Logging 6.5.4", "this shipment MR is merged, close the release".
-  Accepts either a gitlab.cee.redhat.com ocp-shipment-data merge request URL or a bare version
-  number (in which case it finds the shipment MR by its title). Derives the release version and
-  ship date from the MR, extracts the production errata (advisory) URL from the shipment image
-  YAML, and updates the "Logging X.Y.Z" Jira release: description, release date, and released
-  status. Optionally creates the next z-stream release version (e.g. Logging 6.5.5) with a
-  start date of the closed release's date + 1 day, and offers to bump the operator versions
-  (cluster-logging-operator and loki-operator, on their matching release-X.Y branches) via
-  the rhol-version-incrementer skill.
+  Use when the user asks to close, ship, or release a RHOL z-stream release in Jira after its
+  ART shipment MR merges — e.g. "close 6.5.4", "release Logging 6.5.4". Takes a shipment MR
+  URL or bare version number (finds the MR by title), extracts the prod errata URL from the
+  shipment image YAML, and updates the Logging X.Y.Z Jira release: description, release date,
+  released status. Optionally creates the next z-stream version (start date = release date +
+  1 day) and bumps the operator versions (CLO, loki-operator) on their release-X.Y branches
+  via rhol-version-incrementer.
 ---
 
 # RHOL Release Close
@@ -48,18 +44,14 @@ curl -s "https://gitlab.cee.redhat.com/api/v4/projects/$PROJECT/merge_requests?s
 python3 -c "import json,sys; [print(m['iid'], m['state'], '-', m['title']) for m in json.load(sys.stdin)]"
 ```
 
-- The `search` parameter is a case-insensitive substring match on title (and description) —
-  always print the titles and **verify each matches the exact pattern**
-  `Shipment for openshift-logging <version> (ship date: ...)`; the search can also return
-  MRs for other products or nearby versions (e.g. `6.5.40` when searching `6.5.4`).
-- Search `state=opened` first. If nothing is open, repeat with `state=merged` (and then
-  `state=all`) — a release is normally closed after its MR merges, so the matching MR is
+- The `search` parameter is a case-insensitive substring match — always print the titles and
+  **verify each matches the exact pattern** `Shipment for openshift-logging <version> (ship
+  date: ...)`; the search can return other products or nearby versions (`6.5.4` matches
+  `6.5.40`).
+- Search `state=opened` first, then `state=merged` (then `state=all`) — the matching MR is
   often already merged. Report which state you found it in.
-- If there is exactly one match, proceed with that MR (continue at Step 1, skipping the
-  re-fetch if you already have the full JSON).
-- If there are multiple matches, list them and ask the user which MR to use.
-- If there are no matches in any state, stop and tell the user — do not close a release
-  without a shipment MR.
+- One match → proceed (skip the Step 1 re-fetch if you already have the JSON). Multiple →
+  list them and ask. None → stop; do not close a release without a shipment MR.
 
 ## Prerequisites
 
@@ -85,13 +77,8 @@ curl -s "https://gitlab.cee.redhat.com/api/v4/projects/$PROJECT/merge_requests/$
 From the MR JSON extract:
 
 - **title** — e.g. `Shipment for openshift-logging 6.5.4 (ship date: 2026-Nov-12)`.
-  It yields the **version** (`6.5.4`) and the **ship date** (`YYYY-Mmm-DD`, e.g. `2026-Nov-12`).
-  Convert the ship date to ISO `YYYY-MM-DD` with Python — GNU `date -d` rejects the
-  `YYYY-Mmm-DD` form:
-
-  ```bash
-  echo "2026-Nov-12" | python3 -c "import sys,datetime; print(datetime.datetime.strptime(sys.stdin.read().strip(), '%Y-%b-%d').strftime('%Y-%F'))"
-  ```
+  It yields the **version** (`6.5.4`) and the **ship date** (`YYYY-Mmm-DD`). Convert the ship
+  date to ISO with Python `strptime(..., '%Y-%b-%d')` — GNU `date -d` rejects this form.
 - **state** — normally `merged`. If it is `opened` (e.g. the user is closing the release while
   the shipment MR is still open), warn them that the MR has not merged yet and get explicit
   confirmation before proceeding; do not close the release early on your own judgment.
@@ -110,11 +97,10 @@ Each entry has `new_path` and `diff`. The MR touches two kinds of files:
 - `prod/<version>.image.<timestamp>.yaml` — the **image advisory file**; this is the one to read
 
 From the image file's diff, read `environments.prod.advisory.url`, e.g.
-`https://access.redhat.com/errata/RHSA-2026:99823`. This is the **errata URL**. Take it from
-the `prod` environment — **not** `stage` (which points at `access.stage.redhat.com`). The
-reliable discriminator when grepping: the prod URL host is exactly `access.redhat.com`, and
-note the advisory id contains a **colon** (`RHSA-2026:99823`) — don't write a regex that stops
-at the digits:
+`https://access.redhat.com/errata/RHSA-2026:99823` — the **errata URL**. Take it from `prod`,
+**not** `stage` (host `access.stage.redhat.com`); the prod host is exactly
+`access.redhat.com`, and the advisory id contains a **colon** — don't write a regex that
+stops at the digits:
 
 ```bash
 curl -s "https://gitlab.cee.redhat.com/api/v4/projects/$PROJECT/merge_requests/$MR_IID/diffs" | \
@@ -196,13 +182,8 @@ user first (AskUserQuestion), then:
 
 - **Version name:** `Logging <X.Y.(Z+1)>` — bump only the patch component of the version just
   closed. If the user asks for a different version, use theirs.
-- **Start date:** the closed release's **release date + 1 day**, e.g.
-  `2026-11-12` → `2026-11-13`:
-
-  ```bash
-  echo "2026-11-12" | python3 -c "import sys,datetime; print((datetime.date.fromisoformat(sys.stdin.read().strip()) + datetime.timedelta(days=1)).isoformat())"
-  ```
-
+- **Start date:** the closed release's **release date + 1 day** (`datetime.date.fromisoformat`
+  + `timedelta(days=1)`)
 - **Release date:** leave unset — it is not known yet and comes from the next release's
   planning (see the `rhol-release-plan` skill, which owns the full release ticket workflow;
   this step only creates the Jira version).
@@ -212,18 +193,8 @@ Before creating, check the version does not already exist:
 If it exists, report it and skip creation.
 
 Create it with `manageJiraProjectVersion` (executeDestructive), action `create`:
-
-```json
-{
-  "cloudId": "2b9e35e3-6bd3-4cec-b838-f4249ee02432",
-  "action": "create",
-  "projectIdOrKey": "LOG",
-  "name": "Logging <X.Y.(Z+1)>",
-  "startDate": "<release date + 1 day>"
-}
-```
-
-Then report the new version name, its versionId, and its start date.
+`projectIdOrKey: "LOG"`, `name: "Logging <X.Y.(Z+1)>"`, `startDate: "<release date + 1 day>"`
+(same cloudId). Then report the new version name, its versionId, and its start date.
 
 ### Step 8 — Offer to bump the operator versions for the new release
 
@@ -254,21 +225,19 @@ Notes:
 
 ## Common Mistakes
 
-- Reading the advisory URL from the `stage` environment instead of `prod`
-- Taking the URL from an `.fbc.` file instead of the `.image.` file
+- Reading the advisory URL from `stage` instead of `prod`, or from an `.fbc.` file instead of
+  the `.image.` file
 - Treating the release as a Jira issue — it is a project version; `editJiraIssue` and
   `transitionJiraIssue` do not apply
-- Marking the version released before the MR has actually merged without warning the user
-  and getting confirmation
+- Marking the version released before the MR has merged without warning the user and getting
+  confirmation; or overwriting an already-released version without asking
 - Trusting the GitLab `search` substring match blindly — `6.5.4` also matches `6.5.40`;
   always re-verify the full title pattern
 - Writing to Jira without showing the user the summary first
-- Overwriting an already-released version without asking
-- Creating the next z-stream version unasked, or giving it a release date — only the start
-  date (closed release's date + 1 day) is known at close time
-- Bumping the minor instead of the patch when deriving the next version
-- Bumping LFME or eventrouter as part of release close — only the two operators are bumped
-- Running an operator bump against `main` instead of the matching `release-X.Y` branch
+- Creating the next z-stream version unasked, giving it a release date, or bumping the minor
+  instead of the patch
+- Bumping LFME or eventrouter as part of release close — only the two operators are bumped,
+  on their matching `release-X.Y` branch (never `main`)
 - Running the loki-operator bump against the workspace `loki/` clone (it tracks grafana/loki)
   or assuming the loki-operator stream matches the CLO release — confirm its branch and
   target with the user
