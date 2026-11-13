@@ -167,18 +167,7 @@ Report what was written: version name, errata URL, release date, released status
 anything skipped or failed (unmerged MR, missing version, already released) rather than
 silently omitting it.
 
-### Step 7 — Offer to close the release tracking issue
-
-Offer to close the LOG **release tracking issue** (summary `OpenShift Logging z-stream:
-<version>`, created by `rhol-release-plan`; e.g. LOG-10532 for 6.5.4). If its key is not
-already known, ask the user for it — or search `project = LOG AND summary ~ "OpenShift
-Logging z-stream: <version>"` with `searchJiraIssuesUsingJql`. Never guess an issue key.
-
-With the user's confirmation, transition it to **Closed**: get the transition whose
-`to.name` is `Closed` via `listJiraIssueTransitions` (executeRead), then apply it with
-`transitionJiraIssue` (same cloudId). Report the final status.
-
-### Step 8 — Offer to create the next z-stream release
+### Step 7 — Offer to create the next z-stream release
 
 After a successful close, offer to create the next z-stream release version in the LOG
 project, e.g. closing `6.5.4` → create `Logging 6.5.5`. Do not create it unasked — ask the
@@ -200,7 +189,7 @@ Create it with `manageJiraProjectVersion` (executeDestructive), action `create`:
 `projectIdOrKey: "LOG"`, `name: "Logging <X.Y.(Z+1)>"`, `startDate: "<release date + 1 day>"`
 (same cloudId). Then report the new version name, its versionId, and its start date.
 
-### Step 9 — Offer to bump the operator versions for the new release
+### Step 8 — Offer to bump the operator versions for the new release
 
 After creating the next z-stream release (or when the user asks to "bump the versions" for
 it), offer to bump the **operators only** — cluster-logging-operator and loki-operator —
@@ -231,6 +220,18 @@ Notes:
 - Check out a worktree of the matching `release-X.Y` branch and pass it as the bump script's
   repo-path; create PRs with `--base release-X.Y`. Dry-run first, show the user the diff, and
   get confirmation before any commit/push/PR.
+
+### Step 9 — Offer to close the release tracking issue (always last)
+
+Only after everything else is done, offer to close the LOG **release tracking issue**
+(summary `OpenShift Logging z-stream: <version>`, created by `rhol-release-plan`; e.g.
+LOG-10532 for 6.5.4). If its key is not already known, ask the user for it — or search
+`project = LOG AND summary ~ "OpenShift Logging z-stream: <version>"` with
+`searchJiraIssuesUsingJql`. Never guess an issue key.
+
+With the user's confirmation, transition it to **Closed**: get the transition whose
+`to.name` is `Closed` via `listJiraIssueTransitions` (executeRead), then apply it with
+`transitionJiraIssue` (same cloudId). Report the final status.
 
 ## Common Mistakes
 
