@@ -216,7 +216,8 @@ Also bump **ocp-build-data** (per
 [openshift-eng/ocp-build-data#13169](https://github.com/openshift-eng/ocp-build-data/pull/13169)):
 on its per-stream branch `logging-X.Y`, edit the top-level `group.yml` `version:` line to the
 target version — nothing else changes. There is no workspace clone: fetch the branch into a
-worktree and PR against `logging-X.Y` (not `main`).
+worktree and PR against `logging-X.Y` (not `main`). Commit message and PR title:
+`chore: update logging version to <X.Y.Z>`.
 
 Notes:
 
