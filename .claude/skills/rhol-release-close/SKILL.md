@@ -17,8 +17,8 @@ URL on the release, set the release date, and mark the version released.
 
 ## Role
 
-You are closing the Jira **project version** (release) named `Logging <X.Y.Z>` in project LOG.
-The version — not an issue — holds the description, release date, and released status.
+You are closing the Jira **project version** named `Logging <X.Y.Z>` in project LOG — the
+version, not an issue, holds the description, release date, and released status.
 
 ## Inputs
 
@@ -34,9 +34,7 @@ List the project's merge requests matching the shipment title pattern
 
 ```bash
 PROJECT="hybrid-platforms%2Fart%2Focp-shipment-data"
-VERSION="6.5.4"
-
-curl -s "https://gitlab.cee.redhat.com/api/v4/projects/$PROJECT/merge_requests?state=opened&search=openshift-logging%20$VERSION&per_page=20" | \
+curl -s "https://gitlab.cee.redhat.com/api/v4/projects/$PROJECT/merge_requests?state=opened&search=openshift-logging%20<VERSION>&per_page=20" | \
 python3 -c "import json,sys; [print(m['iid'], m['state'], '-', m['title']) for m in json.load(sys.stdin)]"
 ```
 
@@ -46,8 +44,8 @@ python3 -c "import json,sys; [print(m['iid'], m['state'], '-', m['title']) for m
   `6.5.40`).
 - Search `state=opened` first, then `state=merged` (then `state=all`) — the matching MR is
   often already merged. Report which state you found it in.
-- One match → proceed (skip the Step 1 re-fetch if you already have the JSON). Multiple →
-  list them and ask. None → stop; do not close a release without a shipment MR.
+- One match → proceed (skip the Step 1 re-fetch if you have the JSON). Multiple → list and
+  ask. None → stop; do not close a release without a shipment MR.
 
 ## Prerequisites
 
@@ -61,14 +59,8 @@ python3 -c "import json,sys; [print(m['iid'], m['state'], '-', m['title']) for m
 ### Step 1 — Fetch the MR
 
 Parse the URL as `https://gitlab.cee.redhat.com/<project-path>/-/merge_requests/<iid>`,
-URL-encode the project path, and fetch the MR metadata:
-
-```bash
-PROJECT="hybrid-platforms%2Fart%2Focp-shipment-data"
-MR_IID="1159"
-
-curl -s "https://gitlab.cee.redhat.com/api/v4/projects/$PROJECT/merge_requests/$MR_IID"
-```
+URL-encode the project path (`hybrid-platforms%2Fart%2Focp-shipment-data`), and fetch
+`.../api/v4/projects/$PROJECT/merge_requests/$MR_IID`.
 
 From the MR JSON extract:
 
@@ -112,13 +104,10 @@ print('assembly:', asm); print('errata:', url)
 "
 ```
 
-Sanity checks — stop and tell the user instead of proceeding if any fails:
-
-- The image file's `shipment.metadata.assembly` (e.g. `6.5.4`) matches the version from the MR
-  title
-- There is exactly one image file (if several, they must all carry the same prod advisory URL;
-  if they differ, report the conflict)
-- The URL matches `https://access.redhat.com/errata/RH[A-Z]+-`
+Sanity checks — stop and tell the user instead of proceeding if any fails: the image file's
+`shipment.metadata.assembly` matches the version from the MR title; exactly one image file
+(several must all carry the same prod advisory URL, else report the conflict); the URL
+matches `https://access.redhat.com/errata/RH[A-Z]+-`.
 
 ### Step 3 — Find the Jira release
 
@@ -202,8 +191,8 @@ matching `release-X.Y` branch of the operator's repo, and the PR targets that br
 
 | Operator | Repository | Bump branch (for X.Y.Z) |
 |---|---|---|
-| cluster-logging-operator | `github.com/openshift/cluster-logging-operator` | `release-X.Y` (e.g. `release-6.5` for 6.5.5) |
-| loki-operator | Red Hat fork `github.com/openshift/loki` (**not** the workspace `loki/` clone, which tracks `grafana/loki`) | `release-X.Y` (same stream as the release, e.g. `release-6.5` for 6.5.5) |
+| cluster-logging-operator | `github.com/openshift/cluster-logging-operator` | `release-X.Y` |
+| loki-operator | Red Hat fork `github.com/openshift/loki` (**not** the workspace `loki/` clone, which tracks `grafana/loki`) | `release-X.Y` (same stream as the release) |
 
 Also bump **ocp-build-data** (per
 [openshift-eng/ocp-build-data#13169](https://github.com/openshift-eng/ocp-build-data/pull/13169)):
@@ -224,14 +213,12 @@ Notes:
 ### Step 9 — Offer to close the release tracking issue (always last)
 
 Only after everything else is done, offer to close the LOG **release tracking issue**
-(summary `OpenShift Logging z-stream: <version>`, created by `rhol-release-plan`; e.g.
-LOG-10532 for 6.5.4). If its key is not already known, ask the user for it — or search
-`project = LOG AND summary ~ "OpenShift Logging z-stream: <version>"` with
-`searchJiraIssuesUsingJql`. Never guess an issue key.
-
-With the user's confirmation, transition it to **Closed**: get the transition whose
-`to.name` is `Closed` via `listJiraIssueTransitions` (executeRead), then apply it with
-`transitionJiraIssue` (same cloudId). Report the final status.
+(summary `OpenShift Logging z-stream: <version>`, from `rhol-release-plan`). If its key is
+not already known, ask the user for it — or search `project = LOG AND summary ~ "OpenShift
+Logging z-stream: <version>"` with `searchJiraIssuesUsingJql`. Never guess an issue key.
+With confirmation, transition it to **Closed**: find the transition whose `to.name` is
+`Closed` via `listJiraIssueTransitions` (executeRead), apply it with `transitionJiraIssue`,
+and report the final status.
 
 ## Common Mistakes
 
@@ -244,8 +231,7 @@ With the user's confirmation, transition it to **Closed**: get the transition wh
 - Trusting the GitLab `search` substring match blindly — `6.5.4` also matches `6.5.40`;
   always re-verify the full title pattern
 - Writing to Jira without showing the user the summary first
-- Creating the next z-stream version unasked, giving it a release date, or bumping the minor
-  instead of the patch
+- Creating the next z-stream version unasked, or giving it a release date
 - Bumping LFME or eventrouter as part of release close — only the two operators (on their
   `release-X.Y` branch) and the ocp-build-data group (on its `logging-X.Y` branch) are
   bumped; never PR these against `main`
