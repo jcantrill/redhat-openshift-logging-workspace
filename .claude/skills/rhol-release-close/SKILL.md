@@ -5,9 +5,9 @@ description: >
   ART shipment MR merges — e.g. "close 6.5.4", "release Logging 6.5.4". Takes a shipment MR
   URL or bare version number (finds the MR by title), extracts the prod errata URL from the
   shipment image YAML, and updates the Logging X.Y.Z Jira release: description, release date,
-  released status. Optionally creates the next z-stream version (start date = release date +
-  1 day) and bumps the operator versions (CLO, loki-operator) on their release-X.Y branches
-  via rhol-version-incrementer.
+  released status, and offers to close the release tracking issue. Optionally creates the
+  next z-stream version (start date = release date + 1 day) and bumps the operator versions
+  (CLO, loki-operator) on their release-X.Y branches via rhol-version-incrementer.
 ---
 
 # RHOL Release Close
@@ -22,14 +22,10 @@ The version — not an issue — holds the description, release date, and releas
 
 ## Inputs
 
-The user gives either:
-
-- a **shipment MR URL** in the `ocp-shipment-data` repository, e.g.
-  `https://gitlab.cee.redhat.com/hybrid-platforms/art/ocp-shipment-data/-/merge_requests/1159`,
-  or
-- a **bare version number**, e.g. "close 6.5.4" — in which case run Step 0 to find the MR.
-
-If neither is given, ask — do not guess a version or construct an MR URL.
+The user gives either a **shipment MR URL** in the `ocp-shipment-data` repository (e.g.
+`https://gitlab.cee.redhat.com/hybrid-platforms/art/ocp-shipment-data/-/merge_requests/1159`)
+or a **bare version number** ("close 6.5.4" — run Step 0 to find the MR). If neither is
+given, ask — do not guess a version or construct an MR URL.
 
 ## Step 0 — Find the MR from a version number (only when no MR URL was given)
 
@@ -55,8 +51,8 @@ python3 -c "import json,sys; [print(m['iid'], m['state'], '-', m['title']) for m
 
 ## Prerequisites
 
-- Network access to `gitlab.cee.redhat.com` (anonymous read works for this repo from the corp
-  network; if the API returns 401/403/404, tell the user rather than retrying)
+- Network access to `gitlab.cee.redhat.com` (anonymous read works from the corp network; on
+  401/403/404 tell the user rather than retrying)
 - Atlassian MCP tools; cloudId for redhat.atlassian.net:
   `2b9e35e3-6bd3-4cec-b838-f4249ee02432`
 
@@ -138,12 +134,9 @@ anything.
 
 ### Step 4 — Summarize and confirm
 
-Present a summary and get the user's confirmation (AskUserQuestion) before writing:
-
-- The release version name and versionId
-- The errata URL that will become the description
-- The release date (ship date from the MR title, ISO format)
-- That the version will be marked released
+Present a summary and get the user's confirmation (AskUserQuestion) before writing: the
+release version name and versionId; the errata URL that will become the description; the
+release date (ship date from the MR title, ISO); that the version will be marked released.
 
 The established description convention is the **bare errata URL** — no label, no extra prose
 (see released versions like `Logging 6.5.3` or `Logging 6.5.2` for examples).
@@ -174,7 +167,18 @@ Report what was written: version name, errata URL, release date, released status
 anything skipped or failed (unmerged MR, missing version, already released) rather than
 silently omitting it.
 
-### Step 7 — Offer to create the next z-stream release
+### Step 7 — Offer to close the release tracking issue
+
+Offer to close the LOG **release tracking issue** (summary `OpenShift Logging z-stream:
+<version>`, created by `rhol-release-plan`; e.g. LOG-10532 for 6.5.4). If its key is not
+already known, ask the user for it — or search `project = LOG AND summary ~ "OpenShift
+Logging z-stream: <version>"` with `searchJiraIssuesUsingJql`. Never guess an issue key.
+
+With the user's confirmation, transition it to **Closed**: get the transition whose
+`to.name` is `Closed` via `listJiraIssueTransitions` (executeRead), then apply it with
+`transitionJiraIssue` (same cloudId). Report the final status.
+
+### Step 8 — Offer to create the next z-stream release
 
 After a successful close, offer to create the next z-stream release version in the LOG
 project, e.g. closing `6.5.4` → create `Logging 6.5.5`. Do not create it unasked — ask the
@@ -196,7 +200,7 @@ Create it with `manageJiraProjectVersion` (executeDestructive), action `create`:
 `projectIdOrKey: "LOG"`, `name: "Logging <X.Y.(Z+1)>"`, `startDate: "<release date + 1 day>"`
 (same cloudId). Then report the new version name, its versionId, and its start date.
 
-### Step 8 — Offer to bump the operator versions for the new release
+### Step 9 — Offer to bump the operator versions for the new release
 
 After creating the next z-stream release (or when the user asks to "bump the versions" for
 it), offer to bump the **operators only** — cluster-logging-operator and loki-operator —
