@@ -210,7 +210,7 @@ matching `release-X.Y` branch of the operator's repo, and the PR targets that br
 | Operator | Repository | Bump branch (for X.Y.Z) |
 |---|---|---|
 | cluster-logging-operator | `github.com/openshift/cluster-logging-operator` | `release-X.Y` (e.g. `release-6.5` for 6.5.5) |
-| loki-operator | Red Hat fork `github.com/openshift/loki` (**not** the workspace `loki/` clone, which tracks `grafana/loki`) | `release-X.Y` (e.g. `release-6.7`) |
+| loki-operator | Red Hat fork `github.com/openshift/loki` (**not** the workspace `loki/` clone, which tracks `grafana/loki`) | `release-X.Y` (same stream as the release, e.g. `release-6.5` for 6.5.5) |
 
 Also bump **ocp-build-data** (per
 [openshift-eng/ocp-build-data#13169](https://github.com/openshift-eng/ocp-build-data/pull/13169)):
@@ -220,10 +220,9 @@ worktree and PR against `logging-X.Y` (not `main`).
 
 Notes:
 
-- The target version equals the new release's `<X.Y.Z>` for the cluster-logging-operator and
-  the ocp-build-data group. The loki-operator streams independently (e.g. `release-6.7` while
-  CLO is on `release-6.5`) — confirm which loki `release-X.Y` branch and target version the
-  user intends instead of assuming it matches the release.
+- The target version equals the new release's `<X.Y.Z>` for both operators and the
+  ocp-build-data group — the two operators do **not** stream independently; both are bumped
+  to the same version on their same-stream `release-X.Y` branches.
 - Check out a worktree of the matching `release-X.Y` branch and pass it as the bump script's
   repo-path; create PRs with `--base release-X.Y`. Dry-run first, show the user the diff, and
   get confirmation before any commit/push/PR.
@@ -244,6 +243,6 @@ Notes:
 - Bumping LFME or eventrouter as part of release close — only the two operators (on their
   `release-X.Y` branch) and the ocp-build-data group (on its `logging-X.Y` branch) are
   bumped; never PR these against `main`
-- Running the loki-operator bump against the workspace `loki/` clone (it tracks grafana/loki)
-  or assuming the loki-operator stream matches the CLO release — confirm its branch and
-  target with the user
+- Running the loki-operator bump against the workspace `loki/` clone (it tracks grafana/loki),
+  or bumping the two operators to different versions — they always move together to the
+  release's `<X.Y.Z>` on their same-stream `release-X.Y` branches
