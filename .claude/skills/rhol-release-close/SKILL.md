@@ -212,16 +212,21 @@ matching `release-X.Y` branch of the operator's repo, and the PR targets that br
 | cluster-logging-operator | `github.com/openshift/cluster-logging-operator` | `release-X.Y` (e.g. `release-6.5` for 6.5.5) |
 | loki-operator | Red Hat fork `github.com/openshift/loki` (**not** the workspace `loki/` clone, which tracks `grafana/loki`) | `release-X.Y` (e.g. `release-6.7`) |
 
+Also bump **ocp-build-data** (per
+[openshift-eng/ocp-build-data#13169](https://github.com/openshift-eng/ocp-build-data/pull/13169)):
+on its per-stream branch `logging-X.Y`, edit the top-level `group.yml` `version:` line to the
+target version — nothing else changes. There is no workspace clone: fetch the branch into a
+worktree and PR against `logging-X.Y` (not `main`).
+
 Notes:
 
-- The target version equals the new release's `<X.Y.Z>` for the cluster-logging-operator.
-  The loki-operator streams independently (e.g. `release-6.7` while CLO is on `release-6.5`)
-  — confirm which loki `release-X.Y` branch and target version the user intends instead of
-  assuming it matches the release.
+- The target version equals the new release's `<X.Y.Z>` for the cluster-logging-operator and
+  the ocp-build-data group. The loki-operator streams independently (e.g. `release-6.7` while
+  CLO is on `release-6.5`) — confirm which loki `release-X.Y` branch and target version the
+  user intends instead of assuming it matches the release.
 - Check out a worktree of the matching `release-X.Y` branch and pass it as the bump script's
-  repo-path; create the PR with `--base release-X.Y`.
-- Run each bump with `--dry-run` first, show the user the diff, and get confirmation before
-  any commit/push/PR (the incrementer skill's own confirmation flow).
+  repo-path; create PRs with `--base release-X.Y`. Dry-run first, show the user the diff, and
+  get confirmation before any commit/push/PR.
 
 ## Common Mistakes
 
@@ -236,8 +241,9 @@ Notes:
 - Writing to Jira without showing the user the summary first
 - Creating the next z-stream version unasked, giving it a release date, or bumping the minor
   instead of the patch
-- Bumping LFME or eventrouter as part of release close — only the two operators are bumped,
-  on their matching `release-X.Y` branch (never `main`)
+- Bumping LFME or eventrouter as part of release close — only the two operators (on their
+  `release-X.Y` branch) and the ocp-build-data group (on its `logging-X.Y` branch) are
+  bumped; never PR these against `main`
 - Running the loki-operator bump against the workspace `loki/` clone (it tracks grafana/loki)
   or assuming the loki-operator stream matches the CLO release — confirm its branch and
   target with the user
